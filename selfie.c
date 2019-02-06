@@ -445,8 +445,8 @@ void init_scanner () {
   *(SYMBOLS + SYM_LEQ)          = (uint64_t) "<=";
   *(SYMBOLS + SYM_GT)           = (uint64_t) ">";
   *(SYMBOLS + SYM_GEQ)          = (uint64_t) ">=";
-//modified for sll and srl definition
-  *(SYMBOLS + SYM_SLL)           = (uint64_t) "<<";
+//modified for sll and arl definition
+  *(SYMBOLS + SYM_SLL)          = (uint64_t) "<<";
   *(SYMBOLS + SYM_SRL)          = (uint64_t) ">>";
 
 
@@ -3154,7 +3154,8 @@ uint64_t is_star_or_div_or_modulo() {
     return 0;
 }
 
-
+//modified for srl and sll 
+//to be added in the compile_bitwise_expression
 uint64_t is_sll_or_srl() {
   if (symbol == SYM_SLL)
     return 1;
@@ -3852,7 +3853,7 @@ uint64_t compile_term() {
   return ltype;
 }
 
-//MY CODE 1
+//modified for sll and srl adding
 
 uint64_t compile_bitwise_expression() {
   uint64_t ltype;
@@ -3875,49 +3876,24 @@ uint64_t compile_bitwise_expression() {
 
     // assert: allocated_temporaries == n + 2
 
-    if (operator_symbol == SYM_SLL) {
-      if (ltype == UINT64STAR_T) {
-        if (rtype == UINT64_T)
-          // UINT64STAR_T + UINT64_T
-          // pointer arithmetic: factor of 2^3 of integer operand
-          emit_left_shift_by(current_temporary(), 3);
-        else
-          // UINT64STAR_T + UINT64STAR_T
-          syntax_error_message("(uint64_t*) + (uint64_t*) is undefined");
-      } else if (rtype == UINT64STAR_T) {
-        // UINT64_T + UINT64STAR_T
-        // pointer arithmetic: factor of 2^3 of integer operand
-        emit_left_shift_by(previous_temporary(), 3);
-
-        ltype = UINT64STAR_T;
-      }
-
-      emit_sll(previous_temporary(), previous_temporary(), current_temporary());
+if (operator_symbol == SYM_SLL) {
+      if (ltype == UINT64_T) {
+        if (rtype == UINT64_T){
+          emit_sll(previous_temporary(), previous_temporary(), current_temporary());
+        } else
+          syntax_error_message("(uint64_t) << (uint64_t*) is undefined");
+      } else
+        syntax_error_message("(uint64_t*) << (uint64_t*) is undefined");
 
     } else if (operator_symbol == SYM_SRL) {
-      if (ltype == UINT64STAR_T) {
+      if (ltype == UINT64_T) {
         if (rtype == UINT64_T) {
-          // UINT64STAR_T - UINT64_T
-          // pointer arithmetic: factor of 2^3 of integer operand
-          emit_left_shift_by(current_temporary(), 3);
-          emit_sub(previous_temporary(), previous_temporary(), current_temporary());
-        } else {
-          // UINT64STAR_T - UINT64STAR_T
-          // pointer arithmetic: (left_term - right_term) / SIZEOFUINT64
-          emit_sub(previous_temporary(), previous_temporary(), current_temporary());
-          emit_addi(current_temporary(), REG_ZR, SIZEOFUINT64);
-          emit_divu(previous_temporary(), previous_temporary(), current_temporary());
-
-          ltype = UINT64_T;
-        }
-      } else if (rtype == UINT64STAR_T)
-        // UINT64_T - UINT64STAR_T
-        syntax_error_message("(uint64_t) - (uint64_t*) is undefined");
-      else
-        // UINT64_T - UINT64_T
-        emit_srl(previous_temporary(), previous_temporary(), current_temporary());
+          emit_srl(previous_temporary(), previous_temporary(), current_temporary());
+        } else 
+          syntax_error_message("(uint64_t) >> (uint64_t*) is undefined");
+      } else 
+        syntax_error_message("(uint64_t*) >> (uint64_t*) is undefined");
     }
-
     tfree(1);
   }
 
@@ -4012,7 +3988,8 @@ uint64_t compile_expression() {
   uint64_t rtype;
 
   // assert: n = allocated_temporaries
-
+  // modified for srl and sll
+  //changed to accomodate the changes in the grammer.md
   ltype = compile_bitwise_expression();
 
   // assert: allocated_temporaries == n + 1
@@ -4022,7 +3999,7 @@ uint64_t compile_expression() {
     operator_symbol = symbol;
 
     get_symbol();
-
+    // modified for srl and sll
     rtype = compile_bitwise_expression();
 
     // assert: allocated_temporaries == n + 2
@@ -5529,6 +5506,8 @@ void emit_add(uint64_t rd, uint64_t rs1, uint64_t rs2) {
   ic_add = ic_add + 1;
 }
 
+
+// modified for sll and srl
 void emit_sll(uint64_t rd, uint64_t rs1, uint64_t rs2) {
   emit_instruction(encode_r_format(F7_SLL, rs2, rs1, F3_SLL, rd, OP_OP));
 
@@ -5540,7 +5519,7 @@ void emit_srl(uint64_t rd, uint64_t rs1, uint64_t rs2) {
 
   ic_add = ic_add + 1;
 }
-
+// end of modification
 
 void emit_sub(uint64_t rd, uint64_t rs1, uint64_t rs2) {
   emit_instruction(encode_r_format(F7_SUB, rs2, rs1, F3_SUB, rd, OP_OP));
@@ -6865,6 +6844,8 @@ void do_add() {
   ic_add = ic_add + 1;
 }
 
+
+// modifeid for srl and sll
 void do_sll() {
   if (rd != REG_ZR)
     // semantics of add
@@ -6883,6 +6864,9 @@ void do_srl() {
 
   //ic_add = ic_add + 1;
 }
+
+//
+
 
 
 void constrain_add_sub_mul_divu_remu_sltu(char* operator) {
@@ -7953,6 +7937,19 @@ void decode_execute() {
 
         return;
       }
+       else if (funct3 == F3_SRL) {
+      if (funct7 == F7_SRL) {
+          do_srl();
+
+        return;
+      }
+    }
+    if (funct3 == F3_SLL) {// Modified to accomodate the same number in function3 F3_DIVU=F3_SRL=5 
+
+          do_sll();
+
+        return;
+      }
     } else if (funct3 == F3_REMU) {
       if (funct7 == F7_REMU) {
         if (debug) {
@@ -8005,23 +8002,10 @@ void decode_execute() {
         return;
       }
     }
-    // MY CODE RUN
-    else if (funct3 == F3_SRL) {
-      if (funct7 == F7_SRL) {
-
-          do_srl();
-
-        return;
-      }
-    }
-    else if (funct3 == F3_SLL) {
-      if (funct7 == F7_SLL) {
-
-          do_sll();
-
-        return;
-      }
-    }
+    // Modified to accomodate the same number in function3 F3_DIVU=F3_SRL= 
+   
+    
+    
   } else if (opcode == OP_BRANCH) {
     decode_b_format();
 
