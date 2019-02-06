@@ -445,7 +445,7 @@ void init_scanner () {
   *(SYMBOLS + SYM_LEQ)          = (uint64_t) "<=";
   *(SYMBOLS + SYM_GT)           = (uint64_t) ">";
   *(SYMBOLS + SYM_GEQ)          = (uint64_t) ">=";
-//modified for sll and srl definition
+//modified for sll and arl definition
   *(SYMBOLS + SYM_SLL)           = (uint64_t) "<<";
   *(SYMBOLS + SYM_SRL)          = (uint64_t) ">>";
 
