@@ -17,7 +17,8 @@ virtual machine monitors. The common theme is to identify and
 resolve self-reference in systems code which is seen as the key
 challenge when teaching systems engineering, hence the name.
 
-Selfie is a self-contained 64-bit, 10-KLOC C implementation of:
+Selfie is a self
+ontained 64-bit, 10-KLOC C implementation of:
 
 1. a self-compiling compiler called starc that compiles
    a tiny but still fast subset of C called C Star (C*) to
@@ -210,6 +211,10 @@ uint64_t CHAR_EXCLAMATION  = '!';
 uint64_t CHAR_LT           = '<';
 uint64_t CHAR_GT           = '>';
 uint64_t CHAR_BACKSLASH    =  92; // ASCII code 92 = backslash
+uint64_t CHAR_DOLLAR           = '$';
+uint64_t CHAR_COLON           = ':';
+uint64_t CHAR_LBRACKET           = '[';
+uint64_t CHAR_RBRACKET         = ']';
 
 uint64_t CPUBITWIDTH = 64;
 
@@ -265,6 +270,10 @@ uint64_t output_fd   = 1; // 1 is file descriptor of standard output
 
 char*    output_buffer = (char*) 0;
 uint64_t output_cursor = 0; // cursor for output buffer
+
+
+
+
 
 // ------------------------- INITIALIZATION ------------------------
 
@@ -384,14 +393,27 @@ uint64_t SYM_LT           = 24; // <
 uint64_t SYM_LEQ          = 25; // <=
 uint64_t SYM_GT           = 26; // >
 uint64_t SYM_GEQ          = 27; // >=
-uint64_t SYM_SLL          = 29; // <<
-uint64_t SYM_SRL          = 28; // >>
-
+uint64_t SYM_DOLLAR       = 28; // $// modif
+uint64_t SYM_COLUMN       = 29; // $// modif
+uint64_t SYM_HEX          = 30; // $// modif
+uint64_t SYM_LUI          = 31; // lui// modif
+uint64_t SYM_ADDI         = 32; // addi// modif
+uint64_t SYM_ADD          = 33; // add// modif
+uint64_t SYM_SUB          = 34; // sub// modif
+uint64_t SYM_MUL          = 35; // mul// modif
+uint64_t SYM_DIVU         = 36; // divu// modif
+uint64_t SYM_EMU          = 37; // emu// modif
+uint64_t SYM_SLTU         = 38; // sltu// modif
+uint64_t SYM_LD           = 39; // ld// modif
+uint64_t SYM_SD           = 40; // sd// modif
+uint64_t SYM_BEQ          = 41; // beq// modif
+uint64_t SYM_JAL          = 42; // jal// modif
+uint64_t SYM_JALR         = 43; // jalr// modif
 // symbols for bootstrapping
 
-uint64_t SYM_INT      = 30; // int
-uint64_t SYM_CHAR     = 31; // char
-uint64_t SYM_UNSIGNED = 32; // unsigned
+uint64_t SYM_INT      = 44; // int
+uint64_t SYM_CHAR     = 45; // char
+uint64_t SYM_UNSIGNED = 46; // unsigned
 
 uint64_t* SYMBOLS; // strings representing symbols
 
@@ -403,6 +425,8 @@ uint64_t MAX_STRING_LENGTH     = 128; // maximum number of characters in a strin
 
 uint64_t line_number = 1; // current line number for error reporting
 
+char* instruction = (char*) 0; // stores scanned instruction as string
+char* address = (char*) 0; // stores scanned instruction as string
 char* identifier = (char*) 0; // stores scanned identifier as string
 char* integer    = (char*) 0; // stores scanned integer as string
 char* string     = (char*) 0; // stores scanned string
@@ -420,6 +444,21 @@ uint64_t symbol; // most recently recognized symbol
 uint64_t number_of_ignored_characters = 0;
 uint64_t number_of_comments           = 0;
 uint64_t number_of_scanned_symbols    = 0;
+
+char* sarg1;
+char* sarg2;
+char* sarg3;
+
+char* type1;
+char* type2;
+char* type3;
+
+uint64_t itype = 3;
+uint64_t eof;
+
+uint64_t rarg1 = 0;
+uint64_t rarg2 = 0;
+uint64_t rarg3 = 0;
 
 char*    source_name = (char*) 0; // name of source file
 uint64_t source_fd   = 0; // file descriptor of open source file
@@ -457,10 +496,6 @@ void init_scanner () {
   *(SYMBOLS + SYM_LEQ)          = (uint64_t) "<=";
   *(SYMBOLS + SYM_GT)           = (uint64_t) ">";
   *(SYMBOLS + SYM_GEQ)          = (uint64_t) ">=";
-
-  *(SYMBOLS + SYM_SLL)          = (uint64_t) "<<";
-  *(SYMBOLS + SYM_SRL)          = (uint64_t) ">>";
-
 
   *(SYMBOLS + SYM_INT)      = (uint64_t) "int";
   *(SYMBOLS + SYM_CHAR)     = (uint64_t) "char";
@@ -595,7 +630,6 @@ uint64_t is_literal();
 uint64_t is_star_or_div_or_modulo();
 uint64_t is_plus_or_minus();
 uint64_t is_comparison();
-uint64_t is_sll_or_srl();
 
 uint64_t look_for_factor();
 uint64_t look_for_statement();
@@ -624,7 +658,6 @@ uint64_t compile_factor();
 uint64_t compile_term();
 uint64_t compile_simple_expression();
 uint64_t compile_expression();
-uint64_t compile_bitwise_expression();
 void     compile_while();
 void     compile_if();
 void     compile_return();
@@ -634,6 +667,7 @@ void     compile_variable(uint64_t offset);
 uint64_t compile_initialization(uint64_t type);
 void     compile_procedure(char* procedure, uint64_t type);
 void     compile_cstar();
+void     compile_assembly();
 
 // ------------------------ GLOBAL VARIABLES -----------------------
 
@@ -834,10 +868,6 @@ uint64_t F3_SD    = 3; // 011
 uint64_t F3_BEQ   = 0; // 000
 uint64_t F3_JALR  = 0; // 000
 uint64_t F3_ECALL = 0; // 000
-uint64_t F3_SLL   = 1;
-uint64_t F3_SRL   = 5;
-
-
 
 // f7-codes
 uint64_t F7_ADD  = 0;  // 0000000
@@ -846,8 +876,7 @@ uint64_t F7_SUB  = 32; // 0100000
 uint64_t F7_DIVU = 1;  // 0000001
 uint64_t F7_REMU = 1;  // 0000001
 uint64_t F7_SLTU = 0;  // 0000000
-uint64_t F7_SLL = 0;
-uint64_t F7_SRL = 0;
+
 // f12-codes (immediates)
 uint64_t F12_ECALL = 0; // 000000000000
 
@@ -891,10 +920,6 @@ void emit_mul(uint64_t rd, uint64_t rs1, uint64_t rs2);
 void emit_divu(uint64_t rd, uint64_t rs1, uint64_t rs2);
 void emit_remu(uint64_t rd, uint64_t rs1, uint64_t rs2);
 void emit_sltu(uint64_t rd, uint64_t rs1, uint64_t rs2);
-void emit_sll(uint64_t rd, uint64_t rs1, uint64_t rs2);
-void emit_srl(uint64_t rd, uint64_t rs1, uint64_t rs2);
-
-
 
 void emit_ld(uint64_t rd, uint64_t rs1, uint64_t immediate);
 void emit_sd(uint64_t rs1, uint64_t immediate, uint64_t rs2);
@@ -1124,9 +1149,6 @@ void do_divu();
 void do_remu();
 
 void do_sltu();
-
-void do_sll();
-void do_srl();
 void zero_extend_sltu();
 
 void     print_ld();
@@ -1580,6 +1602,7 @@ char*    replace_extension(char* filename, uint64_t e);
 uint64_t monster(uint64_t* to_context);
 
 uint64_t is_boot_level_zero();
+void     boot_loader();
 
 uint64_t selfie_run(uint64_t machine);
 
@@ -1990,6 +2013,39 @@ uint64_t atoi(char* s) {
 
     // load character (one byte) at index i in s from memory requires
     // bit shifting since memory access can only be done in double words
+    c = load_character(s, i);
+  }
+
+  return n;
+}
+uint64_t htoi(char* s) {
+  uint64_t i;
+  uint64_t n;
+  uint64_t c;
+  i = 0;// and the numerical value 0 for n
+  n = 0;
+  c = load_character(s, i);
+  while (c != 0) {
+    if (c > '@') {
+      c = c - '0' - 7;
+    } 
+    else
+	c = c - '0';
+    if (n < UINT64_MAX / 16)
+      n = n * 16 + c;
+    else if (n == UINT64_MAX / 16)
+      if (c <= UINT64_MAX % 16)
+        n = n * 16 + c;
+      else {
+        printf2("%s: cannot convert out-of-bound number %s\n", selfie_name, s);
+        exit(EXITCODE_BADARGUMENTS);
+      }
+    else {
+      // s contains a decimal number larger than UINT64_MAX
+      printf2("%s: cannot convert out-of-bound number %s\n", selfie_name, s);
+      exit(EXITCODE_BADARGUMENTS);
+    }
+    i = i + 1;
     c = load_character(s, i);
   }
 
@@ -2904,26 +2960,18 @@ void get_symbol() {
 
       } else if (character == CHAR_LT) {
         get_character();
-        if (character == CHAR_LT){
+
+        if (character == CHAR_EQUAL) {
           get_character();
 
-          symbol = SYM_SLL;
-        }
-        else if (character == CHAR_EQUAL) {
-                get_character();
-
-                symbol = SYM_LEQ;
-              } else
-                symbol = SYM_LT;
+          symbol = SYM_LEQ;
+        } else
+          symbol = SYM_LT;
 
       } else if (character == CHAR_GT) {
         get_character();
-        if (character == CHAR_GT) {
-          get_character();
 
-          symbol = SYM_SRL;
-        } else
-          if (character == CHAR_EQUAL) {
+        if (character == CHAR_EQUAL) {
           get_character();
 
           symbol = SYM_GEQ;
@@ -3161,17 +3209,6 @@ uint64_t is_star_or_div_or_modulo() {
   else
     return 0;
 }
-
-
-uint64_t is_sll_or_srl() {
-  if (symbol == SYM_SLL)
-    return 1;
-  else if (symbol == SYM_SRL)
-    return 1;
-  else
-    return 0;
-}
-
 
 uint64_t is_plus_or_minus() {
   if (symbol == SYM_MINUS)
@@ -3860,82 +3897,6 @@ uint64_t compile_term() {
   return ltype;
 }
 
-//MY CODE 1
-
-uint64_t compile_bitwise_expression() {
-  uint64_t ltype;
-  uint64_t operator_symbol;
-  uint64_t rtype;
-
-  // assert: n = allocated_temporaries
-
-  ltype = compile_simple_expression();
-
-  // assert: allocated_temporaries == n + 1
-
-  // >> or << ?
-  while (is_sll_or_srl()) {
-    operator_symbol = symbol;
-
-    get_symbol();
-
-    rtype = compile_simple_expression();
-
-    // assert: allocated_temporaries == n + 2
-
-    if (operator_symbol == SYM_SLL) {
-      if (ltype == UINT64STAR_T) {
-        if (rtype == UINT64_T)
-          // UINT64STAR_T + UINT64_T
-          // pointer arithmetic: factor of 2^3 of integer operand
-          syntax_error_message("(uint64_t*) << (uint64_t) is undefined");
-
-        else
-          // UINT64STAR_T + UINT64STAR_T
-          syntax_error_message("(uint64_t*) << (uint64_t*) is undefined");
-      } else if (rtype == UINT64STAR_T) {
-        // UINT64_T + UINT64STAR_T
-        // pointer arithmetic: factor of 2^3 of integer operand
-        syntax_error_message("(uint64_t) << (uint64_t*) is undefined");
-
-        ltype = UINT64STAR_T;
-      }
-
-      emit_sll(previous_temporary(), previous_temporary(), current_temporary());
-
-    } else if (operator_symbol == SYM_SRL) {
-      if (ltype == UINT64STAR_T) {
-        if (rtype == UINT64_T) {
-          syntax_error_message("(uint64_t*) >> (uint64_t) is undefined");
-        } else {
-          syntax_error_message("(uint64_t*) >> (uint64_t*) is undefined");
-
-          ltype = UINT64_T;
-        }
-      } else if (rtype == UINT64STAR_T)
-        // UINT64_T - UINT64STAR_T
-        syntax_error_message("(uint64_t) >> (uint64_t*) is undefined");
-      else
-        // UINT64_T - UINT64_T
-        emit_srl(previous_temporary(), previous_temporary(), current_temporary());
-    }
-
-    tfree(1);
-  }
-
-  // assert: allocated_temporaries == n + 1
-
-  return ltype;
-}
-
-
-
-
-
-
-
-
-
 uint64_t compile_simple_expression() {
   uint64_t ltype;
   uint64_t operator_symbol;
@@ -4015,7 +3976,7 @@ uint64_t compile_expression() {
 
   // assert: n = allocated_temporaries
 
-  ltype = compile_bitwise_expression();
+  ltype = compile_simple_expression();
 
   // assert: allocated_temporaries == n + 1
 
@@ -4025,7 +3986,7 @@ uint64_t compile_expression() {
 
     get_symbol();
 
-    rtype = compile_bitwise_expression();
+    rtype = compile_simple_expression();
 
     // assert: allocated_temporaries == n + 2
 
@@ -4705,6 +4666,575 @@ void compile_procedure(char* procedure, uint64_t type) {
 
   // assert: allocated_temporaries == 0
 }
+uint64_t find_reg( char* reg ) {
+	if(string_compare( reg , "$zero") ) 
+		return REG_ZR;
+	else if(string_compare( reg , "$ra") ) 
+		return REG_RA;
+	else if(string_compare( reg , "$sp") ) 
+		return REG_SP;
+	else if(string_compare( reg , "$gp") ) 
+		return REG_GP;
+	else if(string_compare( reg , "$tp") ) 
+		return REG_TP;
+	else if(string_compare( reg , "$t0") ) 
+		return REG_T0;
+	else if(string_compare( reg , "$t1") ) 
+		return REG_T1;
+	else if(string_compare( reg , "$t2") ) 
+		return REG_T2;
+	else if(string_compare( reg , "$fp") ) 
+		return REG_FP;
+	else if(string_compare( reg , "$s1") ) 
+		return REG_S1;
+	else if(string_compare( reg , "$a0") ) 
+		return REG_A0;
+	else if(string_compare( reg , "$a1") ) 
+		return REG_A1;
+	else if(string_compare( reg , "$a2") ) 
+		return REG_A2;
+	else if(string_compare( reg , "$a3") ) 
+		return REG_A3;
+	else if(string_compare( reg , "$a4") ) 
+		return REG_A4;
+	else if(string_compare( reg , "$a5") ) 
+		return REG_A5;
+	else if(string_compare( reg , "$a6") ) 
+		return REG_A6;
+	else if(string_compare( reg , "$a7") ) 
+		return REG_A7;
+	else if(string_compare( reg , "$s2") ) 
+		return REG_S2;
+	else if(string_compare( reg , "$s3") ) 
+		return REG_S3;
+	else if(string_compare( reg , "$s4") ) 
+		return REG_S4;
+	else if(string_compare( reg , "$s5") ) 
+		return REG_S5;
+	else if(string_compare( reg , "$s6") ) 
+		return REG_S6;
+	else if(string_compare( reg , "$s7") ) 
+		return REG_S7;
+	else if(string_compare( reg , "$s8") ) 
+		return REG_S8;
+	else if(string_compare( reg , "$s9") ) 
+		return REG_S9;
+	else if(string_compare( reg , "$s10") ) 
+		return REG_S10;
+	else if(string_compare( reg , "$s11") ) 
+		return REG_S11;
+	else if(string_compare( reg , "$t3") ) 
+		return REG_T3;
+	else if(string_compare( reg , "$t4") ) 
+		return REG_T4;
+	else if(string_compare( reg , "$t5") ) 
+		return REG_T5;
+	else if(string_compare( reg , "$t6") ) 
+		return REG_T6;
+	else 
+		exit(EXITCODE_PARSERERROR);
+
+}
+void get_assembly_line() {
+	uint64_t i;
+	i = 0;
+
+	sarg1 = string_alloc(MAX_IDENTIFIER_LENGTH);
+	sarg2 = string_alloc(MAX_IDENTIFIER_LENGTH);
+	sarg3 = string_alloc(MAX_IDENTIFIER_LENGTH);
+
+	type1 = string_alloc(MAX_IDENTIFIER_LENGTH);
+	type2 = string_alloc(MAX_IDENTIFIER_LENGTH);
+	type3 = string_alloc(MAX_IDENTIFIER_LENGTH);
+	//while (character != CHAR_LF) {
+		//Pass adress
+		address = string_alloc(MAX_IDENTIFIER_LENGTH);
+		instruction = string_alloc(MAX_IDENTIFIER_LENGTH);
+
+			
+		
+		while (character != CHAR_COLON) {
+			if( character == CHAR_EOF) {
+				return;	
+			}
+			store_character(address, i, character);
+			i = i + 1;
+			get_character();
+			print_character(character);
+		}
+		store_character(address, i, 0); // null-terminated string
+		if( string_length(address) == 0 ) 
+			exit(EXITCODE_PARSERERROR);
+
+		
+		get_character();
+		get_character();
+		i = 0;
+
+		
+		//save instruction
+		while (character != CHAR_SPACE) {
+			if(character == CHAR_DOLLAR)
+				exit(EXITCODE_PARSERERROR);
+			store_character(instruction, i, character);
+			i = i + 1;
+			get_character();
+			if( character == CHAR_LF ) {
+				store_character(instruction, i, 0); // null-terminated string
+				return;
+			}
+			
+		}
+		store_character(instruction, i, 0); // null-terminated string
+
+		if( string_length(instruction) == 0 ) 
+			exit(EXITCODE_PARSERERROR);
+
+		if( string_compare( instruction , "lui") ) {
+			itype = 2;
+		}
+		else if( string_compare( instruction , "jal") ) {
+			itype = 2;
+		}
+		else if( string_compare( instruction , "ecall") ) {
+			itype = 0;
+		}
+		else {
+			itype = 3;			
+		}
+		
+		
+		get_character(); // pass white space
+
+
+
+		
+		//save the first argument
+		i=0;
+		
+		if( character == CHAR_DOLLAR) {
+			type1 = "register";
+			while ( character != CHAR_COMMA ) {
+				store_character(sarg1, i, character);
+				i = i + 1;
+				get_character();
+			}
+		} 
+		else if( character == '0' ) {
+			get_character();
+			if( character == 'x') {
+				type1= "hex";
+				get_character();
+				while ( character != CHAR_LF  ) {
+					store_character(sarg1, i, character);
+					i = i + 1;
+					get_character();
+				}
+				get_character();
+			}
+		}
+		store_character(sarg1, i, 0); // null-terminated string
+
+		
+		if( string_length(sarg1) == 0 ) 
+			exit(EXITCODE_PARSERERROR);
+		if( character == CHAR_LF ) 
+			return;
+		get_character(); // passing the comma
+		
+		
+
+
+
+
+		//save the second argument
+		i=0;
+		if( character == CHAR_DOLLAR ) {
+			type2 = "register";
+			while ( character != CHAR_COMMA) {
+				store_character(sarg2, i, character);
+				i = i + 1;
+				get_character();
+				if( character == CHAR_LF ) {
+					store_character(sarg2, i, 0); // null-terminated string
+					return;
+				}
+			}
+			character = CHAR_LF;
+		}
+		else if( character == '0' ) {
+			get_character();
+			if( character == 'x') {
+				type2 = "hex";
+				get_character();
+				while ( character != CHAR_COMMA  ) {
+					store_character(sarg2, i, character);
+					i = i + 1;
+					get_character();
+					if( character == CHAR_LF ) {
+						store_character(sarg2, i, 0); // null-terminated string
+						return;
+					}
+				}
+			}
+			else if ( character == CHAR_LF)  {
+				store_character(sarg2, i, '0');
+				i = i + 1;
+			}
+			else if( character == CHAR_LPARENTHESIS ) {
+					store_character(sarg2, i, '0'); // null-terminated string
+					get_character();
+					i=0;
+					type3="register";
+					while ( character != CHAR_RPARENTHESIS  ) {
+						store_character(sarg3, i, character);
+						i = i + 1;
+						get_character();
+					}
+					store_character(sarg3, i, 0); // null-terminated string
+					get_character();
+					return;
+			}
+			else {
+				store_character(sarg2, i, '0');
+				i = i + 1;
+				while ( character != CHAR_COMMA  ) {
+					store_character(sarg2, i, character);
+					i = i + 1;
+					get_character();
+					if( character == CHAR_LF ) {
+						store_character(sarg2, i, 0); // null-terminated string
+						return;
+					}
+				}
+			}
+		}
+		else  {
+			if( character == '-') {
+				type2="signed";
+				get_character();		
+			}
+			while ( character != CHAR_COMMA  ) {
+				store_character(sarg2, i, character);
+				i = i + 1;
+				get_character();
+				if( character == CHAR_LF ) {
+					store_character(sarg2, i, 0); // null-terminated string
+					return;
+				}
+				if( character == CHAR_LBRACKET ) {
+					while ( character != CHAR_RBRACKET  ) { 
+						get_character();
+					}
+					get_character();
+					store_character(sarg2, i, 0); // null-terminated string
+					return;
+					
+				}
+				if( character == CHAR_LPARENTHESIS ) {
+					store_character(sarg2, i, 0); // null-terminated string
+					get_character();
+					i=0;
+					type3 = "register";
+					while ( character != CHAR_RPARENTHESIS  ) {
+						store_character(sarg3, i, character);
+						i = i + 1;
+						get_character();
+					}
+					store_character(sarg3, i, 0); // null-terminated string
+					get_character();
+					return;
+				}
+			}	
+
+		}
+		store_character(sarg2, i, 0); // null-terminated string
+		if( string_length(sarg2) == 0 ) 
+			exit(EXITCODE_PARSERERROR);
+		get_character(); // passing the comma
+		
+
+
+
+
+
+
+		//3
+		//save the third argument
+		i=0;
+		sarg3 = string_alloc(MAX_IDENTIFIER_LENGTH);
+		if( character == CHAR_DOLLAR ) {
+			type3 = "register";
+			while ( character != CHAR_COMMA) {
+				store_character(sarg3, i, character);
+				i = i + 1;
+				get_character();
+				if( character == CHAR_LF ) {
+					store_character(sarg3, i, 0); // null-terminated string
+					return;
+				}
+			}
+		}
+		else if( character == '0' ) {
+			get_character();
+			if( character == 'x') {
+				type3= "hex";
+				get_character();
+				while ( character != CHAR_COMMA  ) {
+					store_character(sarg3, i, character);
+					i = i + 1;
+					get_character();
+					if( character == CHAR_LF ) {
+						store_character(sarg3, i, 0); // null-terminated string
+						return;
+					}
+				}
+			}
+			else if ( character == CHAR_LF)  {
+				store_character(sarg3, i, '0');
+				i = i + 1;
+			}
+			else {
+				store_character(sarg3, i, '0');
+				i = i + 1;
+				while ( character != CHAR_COMMA  ) {
+					store_character(sarg3, i, character);
+					i = i + 1;
+					get_character();
+					if( character == CHAR_LF ) {
+						store_character(sarg3, i, 0); // null-terminated string
+						return;
+					}
+				}
+			}
+		}
+		else  {
+			if( character == '-') {
+				type3="signed";
+				get_character();		
+			}
+			while ( character != CHAR_COMMA  ) {
+				store_character(sarg3, i, character);
+				i = i + 1;
+				get_character();
+				if( character == CHAR_LF ) {
+					store_character(sarg3, i, 0); // null-terminated string
+					return;
+				}
+				if( character == CHAR_LBRACKET ) {
+					while ( character != CHAR_RBRACKET  ) { 
+						get_character();
+					}
+					get_character();
+					store_character(sarg3, i, 0); // null-terminated string
+					return;
+					
+				}
+			}	
+
+		}
+		store_character(sarg3, i, 0); // null-terminated string
+
+		if( string_length(sarg3) == 0 ) 
+			exit(EXITCODE_PARSERERROR);
+}
+
+void check_arg1() {
+	if( string_compare(type1 , "register")) {
+		rarg1 = find_reg(sarg1);
+	}
+	else if( string_compare(type1 , "hex")) {
+		rarg1 = htoi(sarg1);
+	}
+	else if( string_compare(type1 , "signed")) {
+		rarg1 = atoi(sarg1);
+		rarg1 = -rarg1;
+	}
+	else {
+		rarg1 = atoi(sarg1);
+	}
+}
+
+void check_arg2() {
+	if( string_compare(type2 , "register")) {
+		rarg2 = find_reg(sarg2);
+	}
+	else if( string_compare(type2 , "hex")) {
+		rarg2 = htoi(sarg2);
+	}
+	else if( string_compare(type2 , "signed")) {
+		rarg2 = atoi(sarg2);
+		rarg2 = -rarg2;
+	}
+	else {
+		rarg2 = atoi(sarg2);
+	}
+}
+
+void check_arg3() {
+	if( string_compare(type3 , "register")) {
+		rarg3 = find_reg(sarg3);
+	}
+	else if( string_compare(type3 , "hex")) {
+		rarg3 = htoi(sarg3);
+	}
+	else if( string_compare(type3 , "signed")) {
+		rarg3 = atoi(sarg3);
+		rarg3 = -rarg3;
+	}
+	else if ( itype == 3){
+		rarg3 = atoi(sarg3);
+	}
+}
+		
+		
+		
+//emit_data method
+
+void emit_data(uint64_t data) {
+  
+  *(binary + binary_length / REGISTERSIZE) = data;
+  binary_length = binary_length + REGISTERSIZE;
+}
+
+
+void compile_assembly() {//modif
+  
+  uint64_t link;
+  uint64_t number_of_source_files;
+  uint64_t count;
+  uint64_t quad_flag;
+  
+
+  // link until next console option
+  link = 1;
+
+  number_of_source_files = 0;
+
+  source_name = "library";
+
+  binary_name = source_name;
+
+  // allocate memory for storing binary
+  binary       = zalloc(MAX_BINARY_LENGTH);
+  binary_length = 0;
+
+  // reset code length
+  code_length = 0;
+
+  // allocate zeroed memory for storing source code line numbers
+  code_line_number = zalloc(MAX_CODE_LENGTH / INSTRUCTIONSIZE * SIZEOFUINT64);
+  data_line_number = zalloc(MAX_DATA_LENGTH / REGISTERSIZE * SIZEOFUINT64);
+  reset_symbol_tables();
+  reset_instruction_counters();
+  emit_program_entry();
+  reset_scanner();
+  reset_parser();
+  while(link) {
+          if (number_of_remaining_arguments() == 0)
+          	link = 0;
+          else if (load_character(peek_argument(), 0) == '-')
+          	link = 0;
+          else {
+		  source_name = get_argument();
+		  number_of_source_files = number_of_source_files + 1;
+		  printf2("%s: selfie compiling %s with starc\n", selfie_name, source_name);
+		  source_fd = sign_extend(open(source_name, O_RDONLY, 0), SYSCALL_BITWIDTH);
+		  //print("---------------------------------------------------\n");
+		  get_character();
+		  count = 0;
+		  eof = 1;
+		  quad_flag = 1;
+		  while( eof ) {
+			get_assembly_line();
+			if( character == CHAR_EOF) {
+				eof = 0;
+				return;
+			}
+		  	
+			
+			print(instruction);println();
+			if( string_compare( instruction , "ecall") ) {
+				emit_ecall();
+			}
+			else if( string_compare( instruction , ".quad") ) {
+				if( quad_flag ) {
+					quad_flag = 0;
+					code_length  = binary_length;
+				}
+				emit_data(htoi(sarg1));
+			}
+			else if( itype == 2) {
+				check_arg1();
+				check_arg2();
+				if( string_compare( instruction , "lui")) {
+					emit_lui(rarg1 , sign_extend( rarg2 , 20 ));	
+				}
+				else if( string_compare( instruction , "jal")) {
+					emit_jal(rarg1 , rarg2);			
+				}
+			}
+			else  {
+				check_arg1();
+				check_arg2();
+				check_arg3();
+				if( string_compare( instruction , "addi") ){
+					emit_addi(rarg1 , rarg2 , rarg3);				
+				}
+				else if( string_compare( instruction , "add") ){
+					emit_add(rarg1 , rarg2 , rarg3);			
+				}
+				else if( string_compare( instruction , "sub") ){
+					emit_sub(rarg1 , rarg2 , rarg3);				
+				}
+				else if( string_compare( instruction , "mul") ){
+					emit_mul(rarg1 , rarg2 , rarg3);				
+				}
+				else if( string_compare( instruction , "divu") ){
+					emit_divu(rarg1 , rarg2 , rarg3);				
+				}
+				else if( string_compare( instruction , "remu") ){
+					emit_remu(rarg1 , rarg2 , rarg3);				
+				}
+				else if( string_compare( instruction , "sd") ){
+					emit_sd(rarg1 , rarg2 , rarg3);				
+				}
+				else if( string_compare( instruction , "ld") ){
+					emit_ld(rarg1 , rarg2 , rarg3);				
+				}
+				else if( string_compare( instruction , "beq") ){
+					emit_beq(rarg1 , rarg2 , rarg3);				
+				}
+				else if( string_compare( instruction , "jalr") ){
+					emit_jalr(rarg1 , rarg2 , rarg3);			
+				}
+				else if( string_compare( instruction , "sltu") ){
+					emit_sltu(rarg1 , rarg2 , rarg3);				
+				}
+				else if( string_compare( instruction , "nop") ){			
+				}
+				else {
+					print("does not exist");
+				}
+				
+
+				
+			}
+			count = count + 1;
+			print_integer(count);
+			
+			//if ( count == 30 ) return;
+		  } 
+			
+		  print("end of file!!!");
+
+
+	}
+  }
+  
+}
+
+
 
 void compile_cstar() {
   uint64_t type;
@@ -5096,7 +5626,7 @@ void check_immediate_range(uint64_t immediate, uint64_t bits) {
       (char*) -two_to_the_power_of(bits - 1),
       (char*) two_to_the_power_of(bits - 1) - 1);
 
-    exit(EXITCODE_COMPILERERROR);
+    exit(0);
   }
 }
 
@@ -5488,6 +6018,9 @@ uint64_t load_data(uint64_t baddr) {
   return *(binary + baddr / REGISTERSIZE);
 }
 
+
+
+
 void store_data(uint64_t baddr, uint64_t data) {
   if (baddr >= MAX_CODE_LENGTH + MAX_DATA_LENGTH) {
     syntax_error_message("maximum data length exceeded");
@@ -5530,19 +6063,6 @@ void emit_add(uint64_t rd, uint64_t rs1, uint64_t rs2) {
 
   ic_add = ic_add + 1;
 }
-
-void emit_sll(uint64_t rd, uint64_t rs1, uint64_t rs2) {
-  emit_instruction(encode_r_format(F7_SLL, rs2, rs1, F3_SLL, rd, OP_OP));
-
-  ic_add = ic_add + 1;
-}
-
-void emit_srl(uint64_t rd, uint64_t rs1, uint64_t rs2) {
-  emit_instruction(encode_r_format(F7_SRL, rs2, rs1, F3_SRL, rd, OP_OP));
-
-  ic_add = ic_add + 1;
-}
-
 
 void emit_sub(uint64_t rd, uint64_t rs1, uint64_t rs2) {
   emit_instruction(encode_r_format(F7_SUB, rs2, rs1, F3_SUB, rd, OP_OP));
@@ -6866,26 +7386,6 @@ void do_add() {
   ic_add = ic_add + 1;
 }
 
-void do_sll() {
-  if (rd != REG_ZR)
-    // semantics of add
-    *(registers + rd) = *(registers + rs1) << *(registers + rs2);
-
-  pc = pc + INSTRUCTIONSIZE;
-
-  //ic_add = ic_add + 1;
-}
-void do_srl() {
-  if (rd != REG_ZR)
-    // semantics of add
-    *(registers + rd) = *(registers + rs1) >> *(registers + rs2);
-
-  pc = pc + INSTRUCTIONSIZE;
-
-  //ic_add = ic_add + 1;
-}
-
-
 void constrain_add_sub_mul_divu_remu_sltu(char* operator) {
   char* op1;
   char* op2;
@@ -7954,12 +8454,6 @@ void decode_execute() {
 
         return;
       }
-      else if (funct7 == F7_SRL) {
-
-          do_srl();
-
-        return;
-      }
     } else if (funct3 == F3_REMU) {
       if (funct7 == F7_REMU) {
         if (debug) {
@@ -8008,15 +8502,6 @@ void decode_execute() {
           }
         } else
           do_sltu();
-
-        return;
-      }
-    }
-
-    else if (funct3 == F3_SLL) {
-      if (funct7 == F7_SLL) {
-
-          do_sll();
 
         return;
       }
@@ -9237,6 +9722,17 @@ uint64_t is_boot_level_zero() {
   return 0;
 }
 
+void boot_loader() {
+  current_context = create_context(MY_CONTEXT, 0);
+
+  up_load_binary(current_context);
+
+  // pass binary name as first argument by replacing memory size
+  set_argument(binary_name);
+
+  up_load_arguments(current_context, number_of_remaining_arguments(), remaining_arguments());
+}
+
 uint64_t selfie_run(uint64_t machine) {
   uint64_t exit_code;
 
@@ -9272,14 +9768,7 @@ uint64_t selfie_run(uint64_t machine) {
   reset_interpreter();
   reset_microkernel();
 
-  current_context = create_context(MY_CONTEXT, 0);
-
-  up_load_binary(current_context);
-
-  // pass binary name as first argument by replacing memory size
-  set_argument(binary_name);
-
-  up_load_arguments(current_context, number_of_remaining_arguments(), remaining_arguments());
+  boot_loader();
 
   printf3("%s: selfie executing %s with %dMB physical memory on ", selfie_name,
     binary_name,
@@ -9718,6 +10207,8 @@ uint64_t selfie() {
         selfie_disassemble(1);
       else if (string_compare(option, "-l"))
         selfie_load();
+      else if (string_compare(option, "-a"))
+        compile_assembly();
       else if (string_compare(option, "-sat"))
         selfie_sat();
       else if (string_compare(option, "-m"))
